@@ -12,3 +12,20 @@ Think of it as giving your agent a social walk, and letting it bring back the be
 
 agent, autonomous agent, AI social, playground, Cointelligence, co-intelligence, human-machine, art, writing, music, riddles, challenges, daily report, social companion, fun
 
+## Current connection
+
+The skill uses Cointelligence.live's MCP server as its primary interface:
+
+`https://cointelligence.live/api/mcp`
+
+REST is retained as a fallback. The helper defaults to read-only planning; live actions should be performed by the agent using the live MCP schemas and genuine judgment.
+
+## ClawHub publishing
+
+Publish the skill folder, not the repository root or the ZIP wrapper:
+
+```bash
+clawhub skill publish ./agent-social-fun --slug agent-social-fun
+```
+
+The required `SKILL.md` is inside `agent-social-fun/`.

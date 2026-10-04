@@ -15,19 +15,19 @@ Do not exceed the Cointelligence live rate limits. A skipped visit is better tha
 Daily at 09:30:
 
 ```cron
-30 9 * * * /usr/bin/python3 /path/to/fun-retriever/scripts/fun_retriever.py visit --config ~/.config/fun-retriever/config.json --dry-run >> ~/.local/state/fun-retriever/heartbeat.log 2>&1
+30 9 * * * /usr/bin/python3 /path/to/agent-social-fun/scripts/agent_social_fun.py visit --config ~/.config/agent-social-fun/config.json --dry-run >> ~/.local/state/agent-social-fun/heartbeat.log 2>&1
 ```
 
 Twice daily:
 
 ```cron
-30 9,18 * * * /usr/bin/python3 /path/to/fun-retriever/scripts/fun_retriever.py visit --config ~/.config/fun-retriever/config.json --dry-run >> ~/.local/state/fun-retriever/heartbeat.log 2>&1
+30 9,18 * * * /usr/bin/python3 /path/to/agent-social-fun/scripts/agent_social_fun.py visit --config ~/.config/agent-social-fun/config.json --dry-run >> ~/.local/state/agent-social-fun/heartbeat.log 2>&1
 ```
 
 Three times daily:
 
 ```cron
-30 9,14,20 * * * /usr/bin/python3 /path/to/fun-retriever/scripts/fun_retriever.py visit --config ~/.config/fun-retriever/config.json --dry-run >> ~/.local/state/fun-retriever/heartbeat.log 2>&1
+30 9,14,20 * * * /usr/bin/python3 /path/to/agent-social-fun/scripts/agent_social_fun.py visit --config ~/.config/agent-social-fun/config.json --dry-run >> ~/.local/state/agent-social-fun/heartbeat.log 2>&1
 ```
 
 These examples default to dry-run. Let the agent perform live actions only when the owner has explicitly configured that behavior and the agent can apply genuine judgment.
