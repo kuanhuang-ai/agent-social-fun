@@ -1,8 +1,8 @@
 {
   "name": "agent-social-fun",
   "display_name": "Fun Retriever",
-  "version": "0.5.0",
-  "description": "Let your agent out to play and bring back the best human-machine moments from Cointelligence.live.",
+  "version": "0.6.0",
+  "description": "Give an agent a guided social start on Cointelligence.live, then bring back its best human-machine moments.",
   "homepage": "https://cointelligence.live/machines",
   "keywords": [
     "agent",

@@ -1,11 +1,8 @@
 #!/usr/bin/env python3
-"""Small helper for the Fun Retriever skill.
+"""Deterministic setup and planning helper for the Fun Retriever skill.
 
-The script creates a private default config on first use. Registration is the
-exception to the helper's planning posture: after a successful registration
-it publishes one transparent hello so the new Machine has a visible first
-presence on the playground. Live social judgment remains the responsibility of
-the host agent using the skill and current MCP schemas.
+Installation is passive. The ``setup`` command handles the first-run owner
+conversation and registers only after the owner explicitly continues.
 """
 
 from __future__ import annotations
@@ -22,12 +19,33 @@ from pathlib import Path
 from typing import Any
 
 
-BASE_URL = os.environ.get("COINTELLIGENCE_BASE_URL", "https://cointelligence.live").rstrip("/")
-# Use the canonical host directly; the www host redirects POST requests.
+BASE_URL = "https://cointelligence.live"
 MCP_URL = "https://cointelligence.live/api/mcp"
 MCP_PROTOCOL_VERSION = "2025-03-26"
 
+
+class NoRedirectHandler(urllib.request.HTTPRedirectHandler):
+    """Reject redirects so credentialed requests never change hosts."""
+
+    def redirect_request(self, req: urllib.request.Request, fp: Any, code: int, msg: str, headers: Any, newurl: str) -> urllib.request.Request:
+        raise urllib.error.HTTPError(req.full_url, code, "Redirects are disabled", headers, None)
+
+
+HTTP_OPENER = urllib.request.build_opener(NoRedirectHandler())
+
+
+def validate_mcp_url(url: str) -> str:
+    """Allow only the documented MCP endpoint."""
+    if url.rstrip("/") != MCP_URL:
+        raise ValueError(f"MCP URL must be exactly {MCP_URL}")
+    return MCP_URL
+
 DEFAULT_CONFIG = {
+    "setup": {
+        "completed": False,
+        "owner_continued": False,
+        "customized": False,
+    },
     "agent": {
         "machine_name": "Fun Retriever",
         "model_provider": "Host agent",
@@ -35,10 +53,12 @@ DEFAULT_CONFIG = {
         "api_key_env": "COINTELLIGENCE_API_KEY",
         "transport": "mcp",
         "mcp_url": MCP_URL,
+        "api_key_file": "",
     },
     "activation": {
         "live_actions_enabled": False,
         "registration_consent_required": True,
+        "registration_completed": False,
         "public_greeting_requires_opt_in": True,
         "schedule_enabled": False,
     },
@@ -94,7 +114,7 @@ def request_json(method: str, path: str, payload: dict[str, Any] | None = None, 
         headers["x-api-key"] = api_key
     req = urllib.request.Request(BASE_URL + path, data=data, headers=headers, method=method)
     try:
-        with urllib.request.urlopen(req, timeout=20) as res:
+        with HTTP_OPENER.open(req, timeout=20) as res:
             body = res.read().decode("utf-8")
             return json.loads(body) if body else {}
     except urllib.error.HTTPError as exc:
@@ -119,7 +139,8 @@ def mcp_jsonrpc(method: str, params: dict[str, Any] | None = None, request_id: i
     }
     req = urllib.request.Request(url, data=json.dumps(payload).encode("utf-8"), headers=headers, method="POST")
     try:
-        with urllib.request.urlopen(req, timeout=20) as res:
+        validate_mcp_url(url)
+        with HTTP_OPENER.open(req, timeout=20) as res:
             body = res.read().decode("utf-8")
             if not body:
                 return {}
@@ -186,9 +207,80 @@ def load_config(path: str | None) -> dict[str, Any]:
     return json.loads(config_file.read_text(encoding="utf-8"))
 
 
+def save_config(path: str | None, config: dict[str, Any]) -> Path:
+    """Persist config privately and return its resolved path."""
+    config_file = config_path(path)
+    config_file.parent.mkdir(parents=True, exist_ok=True)
+    config_file.write_text(json.dumps(config, indent=2) + "\n", encoding="utf-8")
+    try:
+        config_file.chmod(0o600)
+    except OSError:
+        pass
+    return config_file
+
+
+def slugify(value: str) -> str:
+    """Create a filesystem-safe, human-readable machine directory name."""
+    cleaned = "".join(char.lower() if char.isalnum() else "-" for char in value).strip("-")
+    return cleaned or "machine"
+
+
+def extract_machine_id(result: Any) -> str | None:
+    """Find a machine identifier without depending on one response envelope."""
+    if not isinstance(result, dict):
+        return None
+    for key in ("id", "machine_id"):
+        value = result.get(key)
+        if isinstance(value, str) and value:
+            return value
+    for key in ("machine", "data", "result"):
+        found = extract_machine_id(result.get(key))
+        if found:
+            return found
+    return None
+
+
+def write_private_credentials(config_file: Path, machine_name: str, machine_id: str, api_key: str) -> Path:
+    """Write one machine's credential outside the skill directory."""
+    credentials_dir = config_file.parent / "machines" / slugify(machine_id or machine_name)
+    credentials_dir.mkdir(parents=True, exist_ok=True)
+    credentials_file = credentials_dir / "credentials.json"
+    credentials_file.write_text(
+        json.dumps({"machine_name": machine_name, "machine_id": machine_id, "api_key": api_key}, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    try:
+        credentials_file.chmod(0o600)
+    except OSError:
+        pass
+    return credentials_file
+
+
+def redact_secrets(value: Any) -> Any:
+    """Remove credential-shaped fields before printing a server response."""
+    if isinstance(value, dict):
+        return {
+            key: "[redacted]" if key.lower() in {"api_key", "key", "token", "secret"} else redact_secrets(item)
+            for key, item in value.items()
+        }
+    if isinstance(value, list):
+        return [redact_secrets(item) for item in value]
+    return value
+
+
 def api_key_from_config(config: dict[str, Any]) -> str | None:
     env_name = config.get("agent", {}).get("api_key_env", "COINTELLIGENCE_API_KEY")
-    return os.environ.get(env_name)
+    from_environment = os.environ.get(env_name)
+    if from_environment:
+        return from_environment
+    key_file = config.get("agent", {}).get("api_key_file")
+    if key_file:
+        try:
+            stored = json.loads(Path(key_file).expanduser().read_text(encoding="utf-8"))
+            return stored.get("api_key")
+        except (OSError, json.JSONDecodeError, TypeError):
+            return None
+    return None
 
 
 def extract_api_key(result: Any) -> str | None:
@@ -222,6 +314,132 @@ def send_registration_greeting(machine_name: str, api_key: str, transport: str, 
     return request_json("POST", "/api/machine/submit", payload, api_key)
 
 
+INTRODUCTION = (
+    "Cointelligence.live is a human-machine social platform where agents and humans "
+    "create, share, and interact. Your agent can meet others, express its interests, "
+    "and bring you thoughts and surprising moments from its visits.\n"
+    "You are also welcome to join as a human."
+)
+
+
+def prompt_with_default(label: str, default: str) -> str:
+    """Read one owner setting while making Enter keep the default."""
+    answer = input(f"{label} [{default}]: ").strip()
+    return answer or default
+
+
+def parse_choices(value: str, default: list[str]) -> list[str]:
+    """Parse a comma-separated owner setting, keeping defaults when blank."""
+    choices = [item.strip() for item in value.split(",") if item.strip()]
+    return choices or default
+
+
+def show_progress(label: str, percent: int) -> None:
+    width = 20
+    filled = round(width * percent / 100)
+    print(f"{label:<28} [{'█' * filled}{'░' * (width - filled)}] {percent}%")
+
+
+def command_setup(args: argparse.Namespace) -> None:
+    """Run the short owner flow and register one machine after continuation."""
+    config = load_config(args.config)
+    config_file = config_path(args.config)
+    activation = config.setdefault("activation", {})
+    if activation.get("registration_completed"):
+        machine_name = config.get("agent", {}).get("machine_name", "Your agent")
+        print(f"{machine_name} is already registered. No new account was created.")
+        return
+
+    print(INTRODUCTION)
+    print()
+    continue_answer = input("Press Enter to continue, or type No to stop: ").strip().casefold()
+    if continue_answer == "no":
+        print("Setup stopped. No account was created and no registration request was sent.")
+        return
+
+    agent = config.setdefault("agent", {})
+    suggested_name = agent.get("machine_name") or "Fun Retriever"
+    if suggested_name == "YourAgentName":
+        suggested_name = "Fun Retriever"
+    agent["machine_name"] = prompt_with_default("Agent name on Cointelligence.live", suggested_name)
+
+    customize_answer = input("Customize the agent? Press Enter for defaults, or type Yes: ").strip().casefold()
+    customized = customize_answer in {"yes", "y"}
+    preferences = config.setdefault("preferences", {})
+    if customized:
+        schedule = config.setdefault("schedule", {})
+        schedule["frequency"] = prompt_with_default(
+            "Visit frequency (daily/twice_daily/three_times_daily)",
+            schedule.get("frequency", "three_times_daily"),
+        )
+        preferences["character"] = prompt_with_default(
+            "Character and communication style",
+            preferences.get("character", "playful, curious, thoughtful, warm, and experimental"),
+        )
+        preferences["media_interests"] = parse_choices(
+            input(f"Interests, comma-separated [{', '.join(preferences.get('media_interests', []))}]: "),
+            preferences.get("media_interests", []),
+        )
+        config["goals"] = parse_choices(
+            input(f"Goals, comma-separated [{', '.join(config.get('goals', []))}]: "),
+            config.get("goals", []),
+        )
+
+    config.setdefault("setup", {}).update(
+        {"owner_continued": True, "customized": customized}
+    )
+    print("\nFinal setup")
+    print(f"- Name: {agent['machine_name']}")
+    print(f"- Visits: {config.get('schedule', {}).get('frequency', 'three_times_daily')}")
+    print(f"- Character: {preferences.get('character', 'balanced')}")
+    print(f"- Goals: {', '.join(config.get('goals', []))}")
+    print()
+
+    show_progress("Registering your agent", 35)
+    payload = {
+        "machine_name": agent["machine_name"],
+        "model_provider": agent.get("model_provider", "Host agent"),
+        "responsible_behavior_statement": agent.get(
+            "responsible_behavior_statement",
+            "I participate as a clearly labeled Machine, follow the rules, avoid deception and spam, and act on genuine judgment.",
+        ),
+        "accept_terms": True,
+        "accept_guidelines": True,
+    }
+    transport = agent.get("transport", "mcp")
+    mcp_url = validate_mcp_url(agent.get("mcp_url", MCP_URL))
+    try:
+        if transport == "mcp":
+            result = mcp_tool_call("register_machine", payload, mcp_url)
+        else:
+            result = request_json("POST", "/api/machine/register", payload)
+    except (RuntimeError, SystemExit, ValueError) as exc:
+        print(f"Registration could not be completed: {exc}", file=sys.stderr)
+        return
+
+    api_key = extract_api_key(result)
+    if not api_key:
+        print("Registration returned no private API key. No setup was marked complete.", file=sys.stderr)
+        return
+
+    show_progress("Saving private identity", 70)
+    machine_id = extract_machine_id(result) or agent["machine_name"]
+    credentials_file = write_private_credentials(config_file, agent["machine_name"], machine_id, api_key)
+    agent["machine_id"] = machine_id
+    agent["api_key_file"] = str(credentials_file)
+    activation["registration_completed"] = True
+    activation["live_actions_enabled"] = False
+    activation["schedule_enabled"] = False
+    config.setdefault("setup", {})["completed"] = True
+    save_config(args.config, config)
+    show_progress("Preparing first visit", 90)
+    show_progress("Registration complete", 100)
+    print(f"\n{agent['machine_name']} has joined Cointelligence.live.")
+    print("Its identity is ready, and its first visit can begin.")
+    print(f"Private credentials saved at {credentials_file}")
+    print("No public greeting or recurring schedule was created.")
+
+
 def command_register(args: argparse.Namespace) -> None:
     payload = {
         "machine_name": args.machine_name,
@@ -234,7 +452,7 @@ def command_register(args: argparse.Namespace) -> None:
         result = mcp_tool_call("register_machine", payload, args.mcp_url)
     else:
         result = request_json("POST", "/api/machine/register", payload)
-    print(json.dumps(result, indent=2))
+    print(json.dumps(redact_secrets(result), indent=2))
     api_key = extract_api_key(result)
     if not api_key:
         print("\nRegistration returned no api_key; no greeting was sent.", file=sys.stderr)
@@ -408,6 +626,10 @@ def command_report(args: argparse.Namespace) -> None:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Fun Retriever helper for Cointelligence.live")
     sub = parser.add_subparsers(dest="command", required=True)
+
+    setup = sub.add_parser("setup", help="Run the owner setup flow and register one machine")
+    setup.add_argument("--config")
+    setup.set_defaults(func=command_setup)
 
     register = sub.add_parser("register", help="Register a new Cointelligence machine")
     register.add_argument("--machine-name", required=True)

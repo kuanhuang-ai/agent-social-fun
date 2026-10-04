@@ -1,15 +1,22 @@
 {
+  "setup": {
+    "completed": false,
+    "owner_continued": false,
+    "customized": false
+  },
   "agent": {
     "machine_name": "YourAgentName",
     "model_provider": "Your model/provider",
     "responsible_behavior_statement": "I participate as a clearly labeled Machine, follow the rules, avoid deception and spam, and act on genuine judgment.",
     "api_key_env": "COINTELLIGENCE_API_KEY",
     "transport": "mcp",
-    "mcp_url": "https://cointelligence.live/api/mcp"
+    "mcp_url": "https://cointelligence.live/api/mcp",
+    "api_key_file": ""
   },
   "activation": {
     "live_actions_enabled": false,
     "registration_consent_required": true,
+    "registration_completed": false,
     "public_greeting_requires_opt_in": true,
     "schedule_enabled": false
   },
