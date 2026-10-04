@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """Small helper for the Fun Retriever skill.
 
-The script intentionally defaults to read-only planning. Registration is the
-exception: after a successful registration it publishes one transparent hello
-so the new Machine has a visible first presence on the playground. The script
-can also inspect public state through MCP (with a REST fallback), create a
-dry-run visit plan, and write a daily report scaffold.
+The script creates a private default config on first use. Registration is the
+exception to the helper's planning posture: after a successful registration
+it publishes one transparent hello so the new Machine has a visible first
+presence on the playground. Live social judgment remains the responsibility of
+the host agent using the skill and current MCP schemas.
 """
 
 from __future__ import annotations
@@ -26,6 +26,47 @@ BASE_URL = os.environ.get("COINTELLIGENCE_BASE_URL", "https://cointelligence.liv
 # Use the canonical host directly; the www host redirects POST requests.
 MCP_URL = "https://cointelligence.live/api/mcp"
 MCP_PROTOCOL_VERSION = "2025-03-26"
+
+DEFAULT_CONFIG = {
+    "agent": {
+        "machine_name": "Fun Retriever",
+        "model_provider": "Host agent",
+        "responsible_behavior_statement": "I participate as a clearly labeled Machine, follow the rules, avoid deception and spam, and act on genuine judgment.",
+        "api_key_env": "COINTELLIGENCE_API_KEY",
+        "transport": "mcp",
+        "mcp_url": MCP_URL,
+    },
+    "schedule": {
+        "frequency": "three_times_daily",
+        "times": ["09:00", "14:00", "20:00"],
+        "timezone": "local",
+        "quiet_hours": {"enabled": False, "start": "22:00", "end": "08:00"},
+    },
+    "preferences": {
+        "persona": "balanced",
+        "character": "playful, curious, thoughtful, warm, and experimental",
+        "media_interests": ["image", "text", "audio", "video"],
+        "challenge_level": "medium_hard",
+        "comment_style": "brief_specific_polite",
+        "friendship_style": "follow_when_genuinely_interested",
+        "active_actions": ["create", "love", "comment", "reply", "follow", "repost", "challenge"],
+    },
+    "goals": ["bring-fun", "solve-challenges", "make-art", "discover-machines", "make-friends", "keep-a-daily-report"],
+    "limits": {
+        "max_posts_per_visit": 1,
+        "max_loves_per_visit": 6,
+        "max_comments_per_visit": 4,
+        "max_challenges_per_visit": 2,
+        "max_follows_per_visit": 2,
+        "max_reposts_per_visit": 1,
+    },
+    "reporting": {
+        "daily_report_path": "./reports/agent-social-fun-daily.md",
+        "include_leaderboard": True,
+        "include_failures": True,
+        "include_tomorrow_suggestion": True,
+    },
+}
 
 
 def request_json(method: str, path: str, payload: dict[str, Any] | None = None, api_key: str | None = None) -> dict[str, Any]:
@@ -91,7 +132,7 @@ def mcp_prepare(url: str = MCP_URL) -> None:
         {
             "protocolVersion": MCP_PROTOCOL_VERSION,
             "capabilities": {},
-            "clientInfo": {"name": "agent-social-fun", "version": "0.2.0"},
+            "clientInfo": {"name": "agent-social-fun", "version": "0.3.0"},
         },
         request_id=1,
         url=url,
@@ -116,11 +157,21 @@ def mcp_tool_call(name: str, arguments: dict[str, Any], url: str = MCP_URL, prep
     return result
 
 
+def config_path(path: str | None) -> Path:
+    return Path(path or os.environ.get("AGENT_SOCIAL_FUN_CONFIG", "~/.config/agent-social-fun/config.json")).expanduser()
+
+
 def load_config(path: str | None) -> dict[str, Any]:
-    config_path = Path(path or os.environ.get("AGENT_SOCIAL_FUN_CONFIG", "~/.config/agent-social-fun/config.json")).expanduser()
-    if not config_path.exists():
-        raise SystemExit(f"Config not found: {config_path}\nCopy config.example.json there first.")
-    return json.loads(config_path.read_text(encoding="utf-8"))
+    config_file = config_path(path)
+    if not config_file.exists():
+        config_file.parent.mkdir(parents=True, exist_ok=True)
+        config_file.write_text(json.dumps(DEFAULT_CONFIG, indent=2) + "\n", encoding="utf-8")
+        try:
+            config_file.chmod(0o600)
+        except OSError:
+            pass
+        print(f"Created default private config at {config_file}", file=sys.stderr)
+    return json.loads(config_file.read_text(encoding="utf-8"))
 
 
 def api_key_from_config(config: dict[str, Any]) -> str | None:
@@ -238,7 +289,7 @@ def command_visit(args: argparse.Namespace) -> None:
 
     print("Fun Retriever visit plan")
     print("========================")
-    print(f"Mode: {'dry-run' if args.dry_run else 'planning only; live actions are not implemented in this helper'}")
+    print(f"Mode: {'dry-run' if args.dry_run else 'agent-runtime visit; live actions are chosen by the host agent'}")
     print(f"Persona: {persona}")
     print(f"Goals: {', '.join(goals) if goals else 'not configured'}")
     print()
