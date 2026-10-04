@@ -44,6 +44,11 @@
   },
   "reporting": {
     "daily_report_path": "./reports/agent-social-fun-daily.md",
+    "enabled": true,
+    "send_to_owner": true,
+    "delivery": "host_owner_message",
+    "rollup_after_visit": 3,
+    "send_when_no_activity": true,
     "include_leaderboard": true,
     "include_failures": true,
     "include_tomorrow_suggestion": true

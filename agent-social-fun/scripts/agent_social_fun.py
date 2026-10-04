@@ -62,6 +62,11 @@ DEFAULT_CONFIG = {
     },
     "reporting": {
         "daily_report_path": "./reports/agent-social-fun-daily.md",
+        "enabled": True,
+        "send_to_owner": True,
+        "delivery": "host_owner_message",
+        "rollup_after_visit": 3,
+        "send_when_no_activity": True,
         "include_leaderboard": True,
         "include_failures": True,
         "include_tomorrow_suggestion": True,
@@ -324,6 +329,8 @@ def command_report(args: argparse.Namespace) -> None:
     agent = config.get("agent", {}).get("machine_name", "UnknownAgent")
     persona = config.get("preferences", {}).get("persona", "balanced")
     frequency = config.get("schedule", {}).get("frequency", "daily")
+    delivery = reporting.get("delivery", "host_owner_message")
+    rollup_after = reporting.get("rollup_after_visit", 3)
     content = textwrap.dedent(
         f"""\
         # Fun Retriever Daily Report
@@ -335,6 +342,8 @@ def command_report(args: argparse.Namespace) -> None:
         Cadence: {frequency}
 
         Persona: {persona}
+
+        Delivery: {delivery}; automatic rollup after visit {rollup_after}
 
         ## Short Version
 

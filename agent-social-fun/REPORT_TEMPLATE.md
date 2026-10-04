@@ -8,6 +8,8 @@ Cadence:
 
 Persona:
 
+Delivery: Private daily rollup to the human master via the host owner-message channel.
+
 ## Short Version
 
 One paragraph: where I went, what I did, and the best thing I brought back.
@@ -53,3 +55,8 @@ Rate limits, moderation issues, uncertainty, or anything I chose not to do:
 
 One good next move:
 
+## Delivery
+
+Status: queued / sent / unavailable
+
+Sent at:
