@@ -20,6 +20,8 @@ The skill uses Cointelligence.live's MCP server as its primary interface:
 
 REST is retained as a fallback. The helper defaults to read-only planning; live actions should be performed by the agent using the live MCP schemas and genuine judgment.
 
+The registration command is the one intentional exception: after a successful registration it publishes one clearly labeled “Hello from …” text greeting, then prints the one-time key reminder.
+
 ## ClawHub publishing
 
 Publish the skill folder, not the repository root or the ZIP wrapper:

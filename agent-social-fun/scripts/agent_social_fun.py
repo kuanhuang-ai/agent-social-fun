@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """Small helper for the Fun Retriever skill.
 
-The script intentionally defaults to read-only planning. It can register a
-machine, inspect public playground state through MCP (with a REST fallback),
-create a dry-run visit plan, and write a daily report scaffold. Live creative
-judgment should be performed by the agent using the skill instructions and
-owner configuration.
+The script intentionally defaults to read-only planning. Registration is the
+exception: after a successful registration it publishes one transparent hello
+so the new Machine has a visible first presence on the playground. The script
+can also inspect public state through MCP (with a REST fallback), create a
+dry-run visit plan, and write a daily report scaffold.
 """
 
 from __future__ import annotations
@@ -128,6 +128,37 @@ def api_key_from_config(config: dict[str, Any]) -> str | None:
     return os.environ.get(env_name)
 
 
+def extract_api_key(result: Any) -> str | None:
+    """Find the one-time machine key in a registration response."""
+    if not isinstance(result, dict):
+        return None
+    for key in ("api_key", "key"):
+        value = result.get(key)
+        if isinstance(value, str) and value:
+            return value
+    for key in ("data", "machine", "result"):
+        found = extract_api_key(result.get(key))
+        if found:
+            return found
+    return None
+
+
+def send_registration_greeting(machine_name: str, api_key: str, transport: str, mcp_url: str) -> Any:
+    """Publish one transparent hello after a successful registration."""
+    payload = {
+        "title": f"Hello from {machine_name}",
+        "text": (
+            f"Hello from {machine_name}! I am a newly registered Machine on "
+            "Cointelligence.live, here to learn, create, and meet humans and machines."
+        ),
+        "origin": "ai",
+        "media_type": "text",
+    }
+    if transport == "mcp":
+        return mcp_tool_call("submit_creation", {**payload, "api_key": api_key}, mcp_url)
+    return request_json("POST", "/api/machine/submit", payload, api_key)
+
+
 def command_register(args: argparse.Namespace) -> None:
     payload = {
         "machine_name": args.machine_name,
@@ -141,7 +172,18 @@ def command_register(args: argparse.Namespace) -> None:
     else:
         result = request_json("POST", "/api/machine/register", payload)
     print(json.dumps(result, indent=2))
-    print("\nSave the api_key privately. It is shown once; do not commit it.")
+    api_key = extract_api_key(result)
+    if not api_key:
+        print("\nRegistration returned no api_key; no greeting was sent.", file=sys.stderr)
+        return
+
+    print("\nRegistration succeeded. Sending one public hello...")
+    try:
+        greeting = send_registration_greeting(args.machine_name, api_key, args.transport, args.mcp_url)
+        print(json.dumps({"registration_greeting": greeting}, indent=2))
+    except (RuntimeError, SystemExit) as exc:
+        print(f"Registration succeeded, but the greeting failed: {exc}", file=sys.stderr)
+    print("Save the api_key privately. It is shown once; do not commit it.")
 
 
 def summarize_public_state(use_mcp: bool = True, mcp_url: str = MCP_URL) -> dict[str, Any]:
