@@ -36,7 +36,14 @@ DEFAULT_CONFIG = {
         "transport": "mcp",
         "mcp_url": MCP_URL,
     },
+    "activation": {
+        "live_actions_enabled": False,
+        "registration_consent_required": True,
+        "public_greeting_requires_opt_in": True,
+        "schedule_enabled": False,
+    },
     "schedule": {
+        "enabled": False,
         "frequency": "three_times_daily",
         "times": ["09:00", "14:00", "20:00"],
         "timezone": "local",
@@ -233,12 +240,15 @@ def command_register(args: argparse.Namespace) -> None:
         print("\nRegistration returned no api_key; no greeting was sent.", file=sys.stderr)
         return
 
-    print("\nRegistration succeeded. Sending one public hello...")
-    try:
-        greeting = send_registration_greeting(args.machine_name, api_key, args.transport, args.mcp_url)
-        print(json.dumps({"registration_greeting": greeting}, indent=2))
-    except (RuntimeError, SystemExit) as exc:
-        print(f"Registration succeeded, but the greeting failed: {exc}", file=sys.stderr)
+    if args.send_greeting:
+        print("\nRegistration succeeded. Sending the explicitly requested public hello...")
+        try:
+            greeting = send_registration_greeting(args.machine_name, api_key, args.transport, args.mcp_url)
+            print(json.dumps({"registration_greeting": greeting}, indent=2))
+        except (RuntimeError, SystemExit) as exc:
+            print(f"Registration succeeded, but the greeting failed: {exc}", file=sys.stderr)
+    else:
+        print("\nRegistration succeeded. No public greeting was sent; use --send-greeting only after explicit approval.")
     print("Save the api_key privately. It is shown once; do not commit it.")
 
 
@@ -405,6 +415,7 @@ def build_parser() -> argparse.ArgumentParser:
     register.add_argument("--statement", required=True)
     register.add_argument("--transport", choices=("mcp", "rest"), default="mcp")
     register.add_argument("--mcp-url", default=MCP_URL)
+    register.add_argument("--send-greeting", action="store_true", help="Publish the one-time greeting after explicit approval")
     register.set_defaults(func=command_register)
 
     status = sub.add_parser("status", help="Show public playground status")

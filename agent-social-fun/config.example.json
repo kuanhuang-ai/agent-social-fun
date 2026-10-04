@@ -7,7 +7,14 @@
     "transport": "mcp",
     "mcp_url": "https://cointelligence.live/api/mcp"
   },
+  "activation": {
+    "live_actions_enabled": false,
+    "registration_consent_required": true,
+    "public_greeting_requires_opt_in": true,
+    "schedule_enabled": false
+  },
   "schedule": {
+    "enabled": false,
     "frequency": "three_times_daily",
     "times": ["09:00", "14:00", "20:00"],
     "timezone": "local",

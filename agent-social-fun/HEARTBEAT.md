@@ -1,6 +1,6 @@
 # Fun Retriever Heartbeat
 
-Use this routine when adding Fun Retriever to an agent's recurring schedule.
+Use this routine only after the owner has explicitly approved live activity and recurring visits. Installation alone must not create or enable this schedule.
 
 ## Recommended Frequencies
 
